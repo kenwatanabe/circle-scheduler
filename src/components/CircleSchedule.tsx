@@ -70,8 +70,13 @@ const reassignColors = (eventList: Event[]) => {
   }));
 };
 
+// 計算結果を固定の精度に丸める関数を追加
+const roundTo = (num: number, precision: number = 8) => {
+  return Number(num.toFixed(precision));
+};
+
 const CircleSchedule = () => {
-  const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 0);
+  const [windowWidth, setWindowWidth] = useState(0);
   const [events, setEvents] = useState<Event[]>(templates.workday); // デフォルト値を直接設定
   const [history, setHistory] = useState<History>({
     past: [],
@@ -80,23 +85,23 @@ const CircleSchedule = () => {
   const [leftWidth, setLeftWidth] = useState(600);
   const [isResizing, setIsResizing] = useState(false);
 
-  // localStorageからの読み込みをuseEffectで行う
+  // 初期レンダリング時の処理をuseEffectに移動
   useEffect(() => {
+    // クライアントサイドでのみwindowWidthを設定
+    setWindowWidth(window.innerWidth);
+
+    // localStorageからの読み込み
     const saved = localStorage.getItem('schedule');
     if (saved) {
       setEvents(JSON.parse(saved));
     }
-  }, []);
 
-  // ウィンドウサイズの変更を監視
-  useEffect(() => {
+    // ウィンドウサイズの変更を監視
     const handleResize = () => {
       setWindowWidth(window.innerWidth);
     };
 
     window.addEventListener('resize', handleResize);
-    handleResize();
-
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
@@ -167,15 +172,15 @@ const CircleSchedule = () => {
     const startAngle = getAngle(startHour);
     const endAngle = getAngle(endHour);
 
-    // SVGのパスを計算
+    // SVGのパスを計算（roundToを使用）
     const start = {
-      x: center + radius * Math.cos(startAngle),
-      y: center + radius * Math.sin(startAngle)
+      x: roundTo(center + radius * Math.cos(startAngle)),
+      y: roundTo(center + radius * Math.sin(startAngle))
     };
 
     const end = {
-      x: center + radius * Math.cos(endAngle),
-      y: center + radius * Math.sin(endAngle)
+      x: roundTo(center + radius * Math.cos(endAngle)),
+      y: roundTo(center + radius * Math.sin(endAngle))
     };
 
     // 弧の方向を決定
@@ -189,12 +194,11 @@ const CircleSchedule = () => {
   };
 
   const calculatePosition = (hour: number, radius: number) => {
-    // 24時以降の時間を0-24の範囲に変換
     if (hour > 24) hour = hour - 24;
     const angle = ((hour - 6) * 360 / 24) * Math.PI / 180;
     return {
-      x: Number((radius * Math.cos(angle)).toFixed(2)),
-      y: Number((radius * Math.sin(angle)).toFixed(2))
+      x: roundTo(radius * Math.cos(angle)),
+      y: roundTo(radius * Math.sin(angle))
     };
   };
 
@@ -432,6 +436,12 @@ const CircleSchedule = () => {
     }
   };
 
+  // 初期レンダリング用のスタイルを追加
+  const initialStyle = {
+    visibility: windowWidth === 0 ? 'hidden' : 'visible',
+    width: windowWidth === 0 ? '600px' : windowWidth < 768 ? '100%' : `${leftWidth}px`
+  };
+
   // スケジュール編集エリアのレンダリングを修正
   const renderScheduleList = () => (
     events.map((event, index) => {
@@ -591,9 +601,9 @@ const CircleSchedule = () => {
       {/* 左側：円形スケジュール */}
       <div 
         className="md:shrink-0 md:flex-none flex flex-col p-4 md:h-full h-auto"
-        style={{ width: windowWidth < 768 ? '100%' : `${leftWidth}px` }}
+        style={initialStyle}
       >
-        {/* グラフコンテナ - md:justify-center を追加 */}
+        {/* グラフコンテナ */}
         <div className="flex items-center justify-center md:h-full">
           <div className="w-full max-w-[calc(100vh-120px)] aspect-square">
             <svg 
