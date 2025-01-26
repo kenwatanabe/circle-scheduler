@@ -67,14 +67,6 @@ const getNextColor = (events: Event[]) => {
   return pastelColors[nextIndex];
 };
 
-// 色を再割り当てする関数を追加
-const reassignColors = (eventList: Event[]) => {
-  return eventList.map((event, index) => ({
-    ...event,
-    color: pastelColors[index % pastelColors.length]
-  }));
-};
-
 // 計算結果を固定の精度に丸める関数を追加
 const roundTo = (num: number, precision: number = 8) => {
   return Number(num.toFixed(precision));
@@ -255,7 +247,7 @@ const CircleSchedule = () => {
   const radius = 320;
   const center = 400;
 
-  const getTextPosition = (timeSlot: TimeSlot, index: number) => {
+  const getTextPosition = (timeSlot: TimeSlot) => {
     if (!timeSlot?.event?.name) return { x: 0, y: 0 };
 
     const midHour = calculateMidpoint(timeSlot.start, timeSlot.end);
@@ -268,29 +260,28 @@ const CircleSchedule = () => {
     // y座標とx座標の絶対値の比率で配置を決定
     const ratio = Math.abs(normalizedY) / (Math.abs(normalizedY) + Math.abs(normalizedX));
     
-    // 0時と12時の前後30分は特別処理
+    // 0時と12時の前後30分/1時間の特別処理
     const adjustedHour = (midHour + 24) % 24;
-    const isNearCriticalPoint = 
-      (adjustedHour >= 21 || adjustedHour <= 3) ||  // 0時の前後3時間
-      (adjustedHour >= 9 && adjustedHour <= 15);    // 12時の前後3時間
+    const duration = getTimeDifference(timeSlot.start, timeSlot.end);
 
-    // 0時と12時の前後30分かどうかをチェック
     const isBeforeCriticalPoint = 
-      (adjustedHour >= 23.5 && adjustedHour <= 24) ||  // 23:30-24:00
-      (adjustedHour >= 11.5 && adjustedHour < 12);     // 11:30-12:00
+      (duration <= 1) && (
+        (adjustedHour >= 23.5 && adjustedHour <= 24) ||  // 23:30-24:00
+        (adjustedHour >= 11.5 && adjustedHour < 12)      // 11:30-12:00
+      );
 
     const isAfterCriticalPoint = 
-      (adjustedHour >= 0 && adjustedHour <= 0.5) ||    // 00:00-00:30
-      (adjustedHour >= 12 && adjustedHour <= 12.5);    // 12:00-12:30
+      (duration <= 1) && (
+        (adjustedHour >= 0 && adjustedHour <= 0.5) ||    // 00:00-00:30
+        (adjustedHour >= 12 && adjustedHour <= 12.5)     // 12:00-12:30
+      );
 
     // 重なりやすい時間帯は固定位置に配置
     let baseRadius;
     if (isBeforeCriticalPoint) {
-      baseRadius = 0.5;  // 前の30分は内側に固定
+      baseRadius = 0.5;  // 前の30分/1時間は内側に固定
     } else if (isAfterCriticalPoint) {
-      baseRadius = 0.9;   // 後の30分は外側に固定
-    } else if (isNearCriticalPoint) {
-      baseRadius = 0.25 + (ratio * 0.7);  // 0.25（内側）から0.95（外側）まで
+      baseRadius = 0.9;  // 後の30分/1時間は外側に固定
     } else {
       baseRadius = 0.45 + (ratio * 0.3);  // 0.45（内側）から0.75（外側）まで
     }
@@ -739,31 +730,24 @@ const CircleSchedule = () => {
     return distToMin < distToMax ? currentStart + 0.5 : (nextEnd === 24 ? 23.5 : nextEnd - 0.5);
   };
 
-  // キーボードショートカットの処理を修正
+  // キーボードショートカットのuseEffect
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Ctrl+Z: 元に戻す
       if (e.ctrlKey && e.key === 'z' && !e.shiftKey) {
         e.preventDefault();
-        if (history.past.length > 0) {
-          undo();
-        }
+        undo();
       }
-      
-      // Ctrl+Shift+Z または Ctrl+Y: やり直し
       if ((e.ctrlKey && e.shiftKey && e.key === 'z') || (e.ctrlKey && e.key === 'y')) {
         e.preventDefault();
-        if (history.future.length > 0) {
-          redo();
-        }
+        redo();
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [history.past.length, history.future.length]);
+  }, [history.past.length, history.future.length, undo, redo]);
 
-  // SVGコンテナにマウスイベントを追加
+  // ドラッグ処理のuseEffect
   useEffect(() => {
     if (!isDragging || dragIndex === null) return;
 
@@ -797,7 +781,7 @@ const CircleSchedule = () => {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [isDragging, dragIndex]);
+  }, [isDragging, dragIndex, getTimeFromMousePosition, handleTimeChange]);
 
   return (
     <div className="fixed inset-0 flex flex-col md:flex-row">
@@ -900,8 +884,8 @@ const CircleSchedule = () => {
                   <g key={`text-${index}`}>
                     {/* 下線を削除 */}
                     <text
-                      x={center + getTextPosition(slot, index).x}
-                      y={center + getTextPosition(slot, index).y + 5}
+                      x={center + getTextPosition(slot).x}
+                      y={center + getTextPosition(slot).y + 5}
                       textAnchor="middle"
                       className={`${textSize} font-bold select-none pointer-events-none`}
                       fill="#333"
