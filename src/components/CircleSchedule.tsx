@@ -524,7 +524,21 @@ const CircleSchedule = () => {
           </div>
 
           {/* 次のイベントとの間に＋ボタンを表示（次のイベントが30分より長い場合のみ） */}
-          {index < events.length - 1 && (events[index + 1].end - events[index + 1].start) > 0.5 && (
+          {index < events.length - 1 && (
+            // 次のイベントとの間に空き時間があるかチェック
+            (() => {
+              const currentEnd = event.end;
+              const nextStart = events[index + 1].start;
+              
+              // 24時をまたぐ場合の処理
+              if (nextStart < currentEnd) {
+                return (nextStart + 24 - currentEnd) >= 0.5;
+              }
+              
+              // 通常の場合
+              return (nextStart - currentEnd) >= 0.5;
+            })()
+          ) && (
             <button
               onClick={() => addEventBetween(event, events[index + 1])}
               className="w-full py-2 my-2 flex items-center justify-center gap-2 text-gray-500 hover:text-blue-500 hover:bg-gray-50 rounded-md transition-colors group"
