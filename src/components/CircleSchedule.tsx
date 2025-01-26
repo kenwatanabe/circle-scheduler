@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 
 interface Event {
   name: string;
@@ -326,8 +326,8 @@ const CircleSchedule = () => {
     localStorage.setItem('schedule', JSON.stringify(eventsWithNewColors));
   };
 
-  // 元に戻す
-  const undo = () => {
+  // undo関数をuseCallbackでラップ
+  const undo = useCallback(() => {
     if (history.past.length === 0) return;
     
     const previous = history.past[history.past.length - 1];
@@ -338,10 +338,10 @@ const CircleSchedule = () => {
       future: [timeSlots, ...history.future]
     });
     setTimeSlots(previous);
-  };
+  }, [history.past, history.future, timeSlots]);
 
-  // やり直し
-  const redo = () => {
+  // redo関数をuseCallbackでラップ
+  const redo = useCallback(() => {
     if (history.future.length === 0) return;
     
     const next = history.future[0];
@@ -352,17 +352,10 @@ const CircleSchedule = () => {
       future: newFuture
     });
     setTimeSlots(next);
-  };
+  }, [history.past, history.future, timeSlots]);
 
-  // イベント名変更のハンドラー
-  const handleEventNameChange = (index: number, name: string) => {
-    const newTimeSlots = [...timeSlots];
-    newTimeSlots[index].event.name = name;
-    updateEvents(newTimeSlots);
-  };
-
-  // 時刻変更のハンドラーを修正
-  const handleTimeChange = (index: number, newEndTime: number, isDragOperation: boolean = false) => {
+  // handleTimeChange関数をuseCallbackでラップ（一つだけ定義）
+  const handleTimeChange = useCallback((index: number, newEndTime: number, isDragOperation: boolean = false) => {
     // 24:00開始のイベントを0:00開始に変換
     if (timeSlots[index].start === 24) {
       const newTimeSlots = [...timeSlots];
@@ -412,6 +405,13 @@ const CircleSchedule = () => {
     const nextIndex = (index + 1) % timeSlots.length;
     newTimeSlots[nextIndex].start = newEndTime;
 
+    updateEvents(newTimeSlots);
+  }, [timeSlots, updateEvents]);
+
+  // イベント名変更のハンドラー
+  const handleEventNameChange = (index: number, name: string) => {
+    const newTimeSlots = [...timeSlots];
+    newTimeSlots[index].event.name = name;
     updateEvents(newTimeSlots);
   };
 
@@ -678,78 +678,60 @@ const CircleSchedule = () => {
     };
   };
 
-  // マウス位置から時刻を計算する関数を修正
-  const getTimeFromMousePosition = (x: number, y: number, currentIndex: number) => {
-    const dx = x - center;
-    const dy = y - center;
-    let angle = Math.atan2(dy, dx);
-    if (angle < 0) angle += 2 * Math.PI;
-    let hours = (angle * 24 / (2 * Math.PI)) + 6;
-    if (hours >= 24) hours -= 24;
-    
-    // 30分単位に丸める
-    const roundedHours = Math.round(hours * 2) / 2;
-
-    // 前後のイベントの時刻を取得
-    const prevIndex = currentIndex;
-    const nextIndex = (currentIndex + 1) % timeSlots.length;
-    const currentStart = timeSlots[prevIndex].start;
-    const nextEnd = timeSlots[nextIndex].end;
-
-    // 24時をまたぐ場合の処理
-    if (nextEnd < currentStart) {
-      // 例：22:00開始のイベントで、次のイベントが7:00終了の場合
-      if (roundedHours >= currentStart || roundedHours <= nextEnd) {
-        // 有効な範囲内（22:30～6:30）
-        const minTime = currentStart + 0.5;  // 最小値：22:30
-        const maxTime = nextEnd === 24 ? 23.5 : nextEnd - 0.5;  // 24:00終了の場合は23:30まで
-        
-        if (roundedHours >= currentStart && roundedHours < minTime) return minTime;
-        if (roundedHours <= nextEnd && roundedHours > maxTime) return maxTime;
-        return roundedHours;
-      }
-    } else {
-      // 通常の場合
-      const minTime = currentStart + 0.5;
-      const maxTime = nextEnd === 24 ? 23.5 : nextEnd - 0.5;  // 24:00終了の場合は23:30まで
-      
-      if (roundedHours < minTime) return minTime;
-      if (roundedHours > maxTime) return maxTime;
-      return roundedHours;
-    }
-
-    // 範囲外の場合、近い方の制限時刻を返す
-    const distToMin = Math.min(
-      Math.abs(roundedHours - (currentStart + 0.5)),
-      Math.abs(roundedHours - (currentStart + 0.5 + 24))
-    );
-    const distToMax = Math.min(
-      Math.abs(roundedHours - (nextEnd === 24 ? 23.5 : nextEnd - 0.5)),
-      Math.abs(roundedHours - ((nextEnd === 24 ? 23.5 : nextEnd - 0.5) + 24))
-    );
-    return distToMin < distToMax ? currentStart + 0.5 : (nextEnd === 24 ? 23.5 : nextEnd - 0.5);
-  };
-
-  // キーボードショートカットのuseEffect
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.ctrlKey && e.key === 'z' && !e.shiftKey) {
-        e.preventDefault();
-        undo();
-      }
-      if ((e.ctrlKey && e.shiftKey && e.key === 'z') || (e.ctrlKey && e.key === 'y')) {
-        e.preventDefault();
-        redo();
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [history.past.length, history.future.length, undo, redo]);
-
-  // ドラッグ処理のuseEffect
+  // getTimeFromMousePosition関数をuseEffect内に移動
   useEffect(() => {
     if (!isDragging || dragIndex === null) return;
+
+    const getTimeFromMousePosition = (x: number, y: number, currentIndex: number) => {
+      const dx = x - center;
+      const dy = y - center;
+      let angle = Math.atan2(dy, dx);
+      if (angle < 0) angle += 2 * Math.PI;
+      let hours = (angle * 24 / (2 * Math.PI)) + 6;
+      if (hours >= 24) hours -= 24;
+      
+      // 30分単位に丸める
+      const roundedHours = Math.round(hours * 2) / 2;
+
+      // 前後のイベントの時刻を取得
+      const prevIndex = currentIndex;
+      const nextIndex = (currentIndex + 1) % timeSlots.length;
+      const currentStart = timeSlots[prevIndex].start;
+      const nextEnd = timeSlots[nextIndex].end;
+
+      // 24時をまたぐ場合の処理
+      if (nextEnd < currentStart) {
+        // 例：22:00開始のイベントで、次のイベントが7:00終了の場合
+        if (roundedHours >= currentStart || roundedHours <= nextEnd) {
+          // 有効な範囲内（22:30～6:30）
+          const minTime = currentStart + 0.5;  // 最小値：22:30
+          const maxTime = nextEnd === 24 ? 23.5 : nextEnd - 0.5;  // 24:00終了の場合は23:30まで
+          
+          if (roundedHours >= currentStart && roundedHours < minTime) return minTime;
+          if (roundedHours <= nextEnd && roundedHours > maxTime) return maxTime;
+          return roundedHours;
+        }
+      } else {
+        // 通常の場合
+        const minTime = currentStart + 0.5;
+        const maxTime = nextEnd === 24 ? 23.5 : nextEnd - 0.5;  // 24:00終了の場合は23:30まで
+        
+        if (roundedHours < minTime) return minTime;
+        if (roundedHours > maxTime) return maxTime;
+        return roundedHours;
+      }
+
+      // 範囲外の場合、近い方の制限時刻を返す
+      const distToMin = Math.min(
+        Math.abs(roundedHours - (currentStart + 0.5)),
+        Math.abs(roundedHours - (currentStart + 0.5 + 24))
+      );
+      const distToMax = Math.min(
+        Math.abs(roundedHours - (nextEnd === 24 ? 23.5 : nextEnd - 0.5)),
+        Math.abs(roundedHours - ((nextEnd === 24 ? 23.5 : nextEnd - 0.5) + 24))
+      );
+      return distToMin < distToMax ? currentStart + 0.5 : (nextEnd === 24 ? 23.5 : nextEnd - 0.5);
+    };
 
     const handleMouseMove = (e: MouseEvent) => {
       const svg = document.querySelector('svg');
@@ -781,7 +763,24 @@ const CircleSchedule = () => {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [isDragging, dragIndex, getTimeFromMousePosition, handleTimeChange]);
+  }, [isDragging, dragIndex, handleTimeChange]);
+
+  // キーボードショートカットのuseEffect
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        undo();
+      }
+      if ((e.ctrlKey && e.shiftKey && e.key === 'z') || (e.ctrlKey && e.key === 'y')) {
+        e.preventDefault();
+        redo();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [history.past.length, history.future.length, undo, redo]);
 
   return (
     <div className="fixed inset-0 flex flex-col md:flex-row">
