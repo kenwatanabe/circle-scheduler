@@ -618,6 +618,19 @@ const CircleSchedule = () => {
     clonedSvg.setAttribute('height', '1600');
     clonedSvg.style.backgroundColor = 'white';
 
+    // 現在の文字サイズに基づいてフォントサイズを設定
+    const fontSize = {
+      'text-2xl': '24px',
+      'text-3xl': '30px',
+      'text-4xl': '36px'
+    }[textSize] || '24px';
+
+    // クローンしたSVG内のすべてのテキスト要素にフォントサイズを設定
+    clonedSvg.querySelectorAll('text').forEach(text => {
+      text.style.fontSize = fontSize;
+      text.style.fontWeight = 'bold';
+    });
+
     // SVGをBlobに変換
     const svgData = new XMLSerializer().serializeToString(clonedSvg);
     const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
@@ -675,8 +688,6 @@ const CircleSchedule = () => {
                   key={event.start}
                   d={calculateArc(event.start, event.end, radius)}
                   fill={event.color}
-                  stroke="#fff"
-                  strokeWidth="1"
                   className="cursor-pointer hover:opacity-80 transition-opacity"
                   onClick={() => focusEventInput(event.start)}
                 />
