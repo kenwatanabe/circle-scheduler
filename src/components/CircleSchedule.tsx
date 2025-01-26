@@ -84,6 +84,7 @@ const CircleSchedule = () => {
   });
   const [leftWidth, setLeftWidth] = useState(600);
   const [isResizing, setIsResizing] = useState(false);
+  const [textSize, setTextSize] = useState('text-3xl');  // デフォルトを大きめに
 
   // 初期レンダリング時の処理をuseEffectに移動
   useEffect(() => {
@@ -122,12 +123,19 @@ const CircleSchedule = () => {
       setLeftWidth(newWidth);
     };
 
+    // マウスを離した時の処理を追加
+    const handleMouseUp = () => {
+      setIsResizing(false);
+    };
+
     if (isResizing) {
       window.addEventListener('mousemove', handleResize);
+      window.addEventListener('mouseup', handleMouseUp);  // mouseupイベントリスナーを追加
     }
 
     return () => {
       window.removeEventListener('mousemove', handleResize);
+      window.removeEventListener('mouseup', handleMouseUp);  // クリーンアップ時にも削除
     };
   }, [isResizing]);
 
@@ -596,6 +604,55 @@ const CircleSchedule = () => {
     return nextEvent.start - start;
   };
 
+  // ダウンロードボタンのクリックハンドラーを修正
+  const handleDownload = () => {
+    // SVGを直接取得
+    const svg = document.querySelector('svg');
+    if (!svg) return;
+
+    // SVGをクローン
+    const clonedSvg = svg.cloneNode(true) as SVGElement;
+    
+    // SVGの属性を設定
+    clonedSvg.setAttribute('width', '1600');
+    clonedSvg.setAttribute('height', '1600');
+    clonedSvg.style.backgroundColor = 'white';
+
+    // SVGをBlobに変換
+    const svgData = new XMLSerializer().serializeToString(clonedSvg);
+    const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+
+    // SVGからPNGを生成
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 1600;
+      canvas.height = 1600;
+      
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      
+      // 背景を白で塗りつぶし
+      ctx.fillStyle = 'white';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      
+      // SVGを描画
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      
+      // PNGとしてダウンロード
+      canvas.toBlob((blob) => {
+        if (!blob) return;
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'schedule.png';
+        a.click();
+        URL.revokeObjectURL(url);
+      }, 'image/png');
+    };
+    img.src = URL.createObjectURL(svgBlob);
+  };
+
   return (
     <div className="fixed inset-0 flex flex-col md:flex-row">
       {/* 左側：円形スケジュール */}
@@ -642,7 +699,7 @@ const CircleSchedule = () => {
                       x={center + pos.x * 1.15}
                       y={center + pos.y * 1.15}
                       textAnchor="middle"
-                      className="text-lg font-semibold"
+                      className={`${textSize} font-semibold`}
                       fill="#444"
                     >
                       {`${hour}`}
@@ -659,7 +716,7 @@ const CircleSchedule = () => {
                     x={center + pos.x}
                     y={center + pos.y + 5}
                     textAnchor="middle"
-                    className="text-lg font-bold"
+                    className={`${textSize} font-bold`}
                     fill="#333"
                     style={{
                       filter: 'drop-shadow(0px 1px 1px rgba(0,0,0,0.1))',
@@ -723,6 +780,50 @@ const CircleSchedule = () => {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 10h-10a8 8 0 00-8 8v2M21 10l-6 6m6-6l-6-6" />
                 </svg>
               </button>
+              <button
+                onClick={handleDownload}
+                className="p-2 rounded-full text-gray-600 hover:bg-gray-100"
+                title="画像としてダウンロード"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+              </button>
+              <div className="flex items-center gap-1 ml-2 border-l pl-2">
+                <button
+                  onClick={() => setTextSize('text-2xl')}
+                  className={`p-2 rounded-full ${
+                    textSize === 'text-2xl'
+                      ? 'text-blue-500 bg-blue-50'
+                      : 'text-gray-600 hover:bg-gray-100'
+                  }`}
+                  title="中"
+                >
+                  <span className="text-2xl font-bold">A</span>
+                </button>
+                <button
+                  onClick={() => setTextSize('text-3xl')}
+                  className={`p-2 rounded-full ${
+                    textSize === 'text-3xl'
+                      ? 'text-blue-500 bg-blue-50'
+                      : 'text-gray-600 hover:bg-gray-100'
+                  }`}
+                  title="大"
+                >
+                  <span className="text-3xl font-bold">A</span>
+                </button>
+                <button
+                  onClick={() => setTextSize('text-4xl')}
+                  className={`p-2 rounded-full ${
+                    textSize === 'text-4xl'
+                      ? 'text-blue-500 bg-blue-50'
+                      : 'text-gray-600 hover:bg-gray-100'
+                  }`}
+                  title="特大"
+                >
+                  <span className="text-4xl font-bold">A</span>
+                </button>
+              </div>
             </div>
             <div className="flex gap-2">
               <button 
