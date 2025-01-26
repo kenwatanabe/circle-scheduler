@@ -72,16 +72,21 @@ const reassignColors = (eventList: Event[]) => {
 
 const CircleSchedule = () => {
   const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 0);
-  const [events, setEvents] = useState<Event[]>(() => {
-    const saved = localStorage.getItem('schedule');
-    return saved ? JSON.parse(saved) : templates.workday;
-  });
+  const [events, setEvents] = useState<Event[]>(templates.workday); // デフォルト値を直接設定
   const [history, setHistory] = useState<History>({
     past: [],
     future: []
   });
   const [leftWidth, setLeftWidth] = useState(600);
   const [isResizing, setIsResizing] = useState(false);
+
+  // localStorageからの読み込みをuseEffectで行う
+  useEffect(() => {
+    const saved = localStorage.getItem('schedule');
+    if (saved) {
+      setEvents(JSON.parse(saved));
+    }
+  }, []);
 
   // ウィンドウサイズの変更を監視
   useEffect(() => {
