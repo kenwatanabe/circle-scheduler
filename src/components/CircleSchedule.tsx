@@ -102,14 +102,7 @@ const calculateMidpoint = (start: number, end: number) => {
 
 const CircleSchedule = () => {
   const [windowWidth, setWindowWidth] = useState(0);
-  const [timeSlots, setTimeSlots] = useState<TimeSlot[]>(() => {
-    const saved = localStorage.getItem('schedule');
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      return parsed.length > 0 ? parsed : templates.workday;
-    }
-    return templates.workday;
-  });
+  const [timeSlots, setTimeSlots] = useState<TimeSlot[]>(templates.workday);
   const [history, setHistory] = useState<History>({
     past: [],
     future: []
@@ -133,6 +126,17 @@ const CircleSchedule = () => {
 
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // localStorageからの読み込みをuseEffectで行う
+  useEffect(() => {
+    const saved = localStorage.getItem('schedule');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (parsed.length > 0) {
+        setTimeSlots(parsed);
+      }
+    }
   }, []);
 
   // リサイズハンドラーを追加
@@ -306,8 +310,7 @@ const CircleSchedule = () => {
   };
 
   // イベント更新時にローカルストレージも更新
-  const updateEvents = (newEvents: TimeSlot[], preserveColors: boolean = false) => {
-    // preserveColorsがtrueの場合は色を再割り当てしない
+  const updateEvents = useCallback((newEvents: TimeSlot[], preserveColors: boolean = false) => {
     const eventsWithNewColors = preserveColors 
       ? newEvents 
       : newEvents.map((slot, index) => ({
@@ -323,8 +326,12 @@ const CircleSchedule = () => {
       future: []
     }));
     setTimeSlots(eventsWithNewColors);
-    localStorage.setItem('schedule', JSON.stringify(eventsWithNewColors));
-  };
+    
+    // localStorageへの保存をブラウザ側でのみ実行
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('schedule', JSON.stringify(eventsWithNewColors));
+    }
+  }, [timeSlots]);
 
   // undo関数をuseCallbackでラップ
   const undo = useCallback(() => {
@@ -460,48 +467,6 @@ const CircleSchedule = () => {
     const filteredTimeSlots = newTimeSlots.filter((_, i) => i !== index);
     
     updateEvents(filteredTimeSlots);
-  };
-
-  // イベント追加ボタンのクリックハンドラーを修正
-  const handleAddEvent = () => {
-    if (timeSlots.length === 0) {
-      // 最初のイベントを追加
-      const newEvent: TimeSlot = {
-        start: 7, // デフォルトで7:00から開始
-        end: 7,   // デフォルトで7:00に終了
-        event: {
-          name: '',
-          color: pastelColors[0]
-        }
-      };
-      updateEvents([newEvent]);
-    } else {
-      // 既存のイベントの後に新しいイベントを追加
-      const lastSlot = timeSlots[timeSlots.length - 1];
-      const firstSlot = timeSlots[0];
-      const availableHours = firstSlot.start > lastSlot.start 
-        ? firstSlot.start - lastSlot.start 
-        : (24 - lastSlot.start) + firstSlot.start;
-
-      if (availableHours < 0.5) {
-        alert('これ以上予定を追加できません');
-        return;
-      }
-
-      // 新しい時刻を計算（利用可能な時間の半分か1時間のいずれか小さい方）
-      const newStart = lastSlot.start + Math.min(1, availableHours / 2);
-      const adjustedStart = newStart >= 24 ? newStart - 24 : newStart;
-
-      const newEvent: TimeSlot = {
-        start: adjustedStart,
-        end: adjustedStart,
-        event: {
-          name: '',
-          color: getNextColor(timeSlots.map(slot => slot.event))
-        }
-      };
-      updateEvents([...timeSlots, newEvent]);
-    }
   };
 
   // イベントの間に追加するための関数を修正
@@ -763,7 +728,7 @@ const CircleSchedule = () => {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [isDragging, dragIndex, handleTimeChange]);
+  }, [isDragging, dragIndex, handleTimeChange, timeSlots]);
 
   // キーボードショートカットのuseEffect
   useEffect(() => {
@@ -842,7 +807,7 @@ const CircleSchedule = () => {
                       >
                         {/* より大きな透明なヒットエリア（円弧状） */}
                         <path
-                          d={`M ${getBoundaryPosition(slot.end, radius * 0).x} ${getBoundaryPosition(slot.end, radius * 0).y}
+                          d={`M ${getBoundaryPosition(slot.end, radius * 0).x} ${getBoundaryPosition(slot.end, radius * 1.1).y}
                               L ${getBoundaryPosition(slot.end, radius * 1.1).x} ${getBoundaryPosition(slot.end, radius * 1.1).y}`}
                           stroke="transparent"
                           strokeWidth="20"
