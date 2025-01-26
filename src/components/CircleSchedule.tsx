@@ -436,9 +436,9 @@ const CircleSchedule = () => {
     }
   };
 
-  // 初期レンダリング用のスタイルを追加
-  const initialStyle = {
-    visibility: windowWidth === 0 ? 'hidden' : 'visible',
+  // 初期レンダリング用のスタイルを追加（型を明示的に指定）
+  const initialStyle: React.CSSProperties = {
+    visibility: windowWidth === 0 ? 'hidden' as const : 'visible' as const,
     width: windowWidth === 0 ? '600px' : windowWidth < 768 ? '100%' : `${leftWidth}px`
   };
 
