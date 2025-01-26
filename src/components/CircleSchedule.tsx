@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, Fragment, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 
 interface Event {
   start: number;
@@ -74,7 +74,7 @@ const CircleSchedule = () => {
   const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 0);
   const [events, setEvents] = useState<Event[]>(() => {
     const saved = localStorage.getItem('schedule');
-    return saved ? JSON.parse(saved) : templates.workday;  // デフォルトで平日テンプレートを使用
+    return saved ? JSON.parse(saved) : templates.workday;
   });
   const [history, setHistory] = useState<History>({
     past: [],
@@ -100,10 +100,6 @@ const CircleSchedule = () => {
     setIsResizing(true);
   };
 
-  const handleResizeEnd = () => {
-    setIsResizing(false);
-  };
-
   useEffect(() => {
     const handleResize = (e: MouseEvent) => {
       if (!isResizing) return;
@@ -116,18 +112,12 @@ const CircleSchedule = () => {
       setLeftWidth(newWidth);
     };
 
-    const handleMouseUp = () => {
-      setIsResizing(false);
-    };
-
     if (isResizing) {
       window.addEventListener('mousemove', handleResize);
-      window.addEventListener('mouseup', handleMouseUp);
     }
 
     return () => {
       window.removeEventListener('mousemove', handleResize);
-      window.removeEventListener('mouseup', handleMouseUp);
     };
   }, [isResizing]);
 
@@ -324,17 +314,6 @@ const CircleSchedule = () => {
       ...newEvents[index],
       [field]: value
     };
-    updateEvents(newEvents);
-  };
-
-  const addEvent = () => {
-    const newEvent = { 
-      start: 0, 
-      end: 1, 
-      event: '', 
-      color: getNextColor(events)  // 新しい色を設定
-    };
-    const newEvents = [...events, newEvent];
     updateEvents(newEvents);
   };
 
