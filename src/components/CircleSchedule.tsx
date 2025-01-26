@@ -1,9 +1,6 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
-import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
-import type { DragEndEvent } from '@dnd-kit/core';
 
 interface Event {
   name: string;
@@ -38,9 +35,10 @@ const pastelColors = [
 // テンプレートの形式を修正
 const templates = {
   empty: [
-    { start: 7, end: 7, event: { name: '', color: pastelColors[0] } }  // 7:00の空のイベント
+    { start: 6, end: 6, event: { name: '就寝', color: pastelColors[0] } }  // 6:00の就寝イベント
   ],
   workday: [
+    { start: 22, end: 6, event: { name: '就寝', color: pastelColors[0] } },
     { start: 6, end: 7, event: { name: '起床・準備', color: pastelColors[1] } },
     { start: 7, end: 8, event: { name: '朝食', color: pastelColors[2] } },
     { start: 8, end: 9, event: { name: '通勤', color: pastelColors[3] } },
@@ -48,9 +46,9 @@ const templates = {
     { start: 18, end: 19, event: { name: '通勤', color: pastelColors[5] } },
     { start: 19, end: 20, event: { name: '夕食', color: pastelColors[6] } },
     { start: 20, end: 22, event: { name: '自由時間', color: pastelColors[7] } },
-    { start: 22, end: 6, event: { name: '就寝', color: pastelColors[0] } },
   ],
   weekend: [
+    { start: 22, end: 8, event: { name: '就寝', color: pastelColors[0] } },
     { start: 8, end: 9, event: { name: '起床・準備', color: pastelColors[1] } },
     { start: 9, end: 10, event: { name: '朝食', color: pastelColors[2] } },
     { start: 10, end: 12, event: { name: '自由時間', color: pastelColors[3] } },
@@ -58,7 +56,6 @@ const templates = {
     { start: 13, end: 18, event: { name: '趣味', color: pastelColors[5] } },
     { start: 18, end: 20, event: { name: '夕食', color: pastelColors[6] } },
     { start: 20, end: 22, event: { name: '自由時間', color: pastelColors[7] } },
-    { start: 22, end: 8, event: { name: '就寝', color: pastelColors[0] } },
   ]
 };
 
@@ -100,6 +97,17 @@ const getTimeDifference = (start: number, end: number) => {
   return end - start;
 };
 
+// 中間点を計算する関数をコンポーネントの外に移動
+const calculateMidpoint = (start: number, end: number) => {
+  if (end < start) {
+    const totalHours = (24 - start) + end;
+    let midpoint = start + (totalHours / 2);
+    if (midpoint >= 24) midpoint -= 24;
+    return midpoint;
+  }
+  return start + (end - start) / 2;
+};
+
 const CircleSchedule = () => {
   const [windowWidth, setWindowWidth] = useState(0);
   const [timeSlots, setTimeSlots] = useState<TimeSlot[]>(() => {
@@ -119,6 +127,7 @@ const CircleSchedule = () => {
   const [textSize, setTextSize] = useState('text-3xl');  // デフォルトを大きめに
   const [isDragging, setIsDragging] = useState(false);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [focusedIndex, setFocusedIndex] = useState<number | null>(null);
 
   // 初期レンダリング時の処理をuseEffectに移動
   useEffect(() => {
@@ -247,56 +256,47 @@ const CircleSchedule = () => {
   const center = 400;
 
   const getTextPosition = (timeSlot: TimeSlot, index: number) => {
-    if (!timeSlot?.event?.name) {
-      return { x: 0, y: 0 };
-    }
-
-    // 中間点の計算
-    const calculateMidpoint = (start: number, end: number) => {
-      if (end < start) {
-        const totalHours = (24 - start) + end;
-        let midpoint = start + (totalHours / 2);
-        if (midpoint >= 24) midpoint -= 24;
-        return midpoint;
-      }
-      return start + (end - start) / 2;
-    };
+    if (!timeSlot?.event?.name) return { x: 0, y: 0 };
 
     const midHour = calculateMidpoint(timeSlot.start, timeSlot.end);
-    const text = timeSlot.event.name;
-
-    // 前後のイベントの中間点を取得
-    const prevIndex = (index - 1 + timeSlots.length) % timeSlots.length;
-    const nextIndex = (index + 1) % timeSlots.length;
-    const prevMidHour = calculateMidpoint(timeSlots[prevIndex].start, timeSlots[prevIndex].end);
-    const nextMidHour = calculateMidpoint(timeSlots[nextIndex].start, timeSlots[nextIndex].end);
-
-    // 基本の半径を設定
-    let textRadius = radius * 0.65;
-
-    // 前後のテキストとの角度差を計算
-    const getAngleDiff = (hour1: number, hour2: number) => {
-      let diff = Math.abs(hour1 - hour2);
-      if (diff > 12) diff = 24 - diff;
-      return diff;
-    };
-
-    const prevAngleDiff = getAngleDiff(midHour, prevMidHour);
-    const nextAngleDiff = getAngleDiff(midHour, nextMidHour);
-
-    // テキストの長さに基づく基本調整値
-    const textLength = text.length;
-    const baseAdjustment = Math.min(Math.max(textLength - 4, 0) * 4, 40);
-
-    // 前後のテキストとの距離に基づいて半径を調整
-    if (prevAngleDiff < 3 || nextAngleDiff < 3) {
-      // 近接するテキストがある場合、交互に内側/外側に配置
-      const isEven = index % 2 === 0;
-      textRadius += isEven ? baseAdjustment : -baseAdjustment;
-    }
-
-    // 6時を0度として角度を計算
     const angle = ((midHour - 6) * 360 / 24) * Math.PI / 180;
+
+    // y座標の正負で上下、x座標の正負で左右を判定
+    const normalizedY = Math.sin(angle);
+    const normalizedX = Math.cos(angle);
+
+    // y座標とx座標の絶対値の比率で配置を決定
+    const ratio = Math.abs(normalizedY) / (Math.abs(normalizedY) + Math.abs(normalizedX));
+    
+    // 0時と12時の前後30分は特別処理
+    const adjustedHour = (midHour + 24) % 24;
+    const isNearCriticalPoint = 
+      (adjustedHour >= 21 || adjustedHour <= 3) ||  // 0時の前後3時間
+      (adjustedHour >= 9 && adjustedHour <= 15);    // 12時の前後3時間
+
+    // 0時と12時の前後30分かどうかをチェック
+    const isBeforeCriticalPoint = 
+      (adjustedHour >= 23.5 && adjustedHour <= 24) ||  // 23:30-24:00
+      (adjustedHour >= 11.5 && adjustedHour < 12);     // 11:30-12:00
+
+    const isAfterCriticalPoint = 
+      (adjustedHour >= 0 && adjustedHour <= 0.5) ||    // 00:00-00:30
+      (adjustedHour >= 12 && adjustedHour <= 12.5);    // 12:00-12:30
+
+    // 重なりやすい時間帯は固定位置に配置
+    let baseRadius;
+    if (isBeforeCriticalPoint) {
+      baseRadius = 0.5;  // 前の30分は内側に固定
+    } else if (isAfterCriticalPoint) {
+      baseRadius = 0.9;   // 後の30分は外側に固定
+    } else if (isNearCriticalPoint) {
+      baseRadius = 0.25 + (ratio * 0.7);  // 0.25（内側）から0.95（外側）まで
+    } else {
+      baseRadius = 0.45 + (ratio * 0.3);  // 0.45（内側）から0.75（外側）まで
+    }
+    
+    const textRadius = radius * baseRadius;
+
     return {
       x: roundTo(textRadius * Math.cos(angle)),
       y: roundTo(textRadius * Math.sin(angle))
@@ -315,15 +315,17 @@ const CircleSchedule = () => {
   };
 
   // イベント更新時にローカルストレージも更新
-  const updateEvents = (newEvents: TimeSlot[]) => {
-    // 色を再割り当て
-    const eventsWithNewColors = newEvents.map((slot, index) => ({
-      ...slot,
-      event: {
-        ...slot.event,
-        color: pastelColors[index % pastelColors.length]
-      }
-    }));
+  const updateEvents = (newEvents: TimeSlot[], preserveColors: boolean = false) => {
+    // preserveColorsがtrueの場合は色を再割り当てしない
+    const eventsWithNewColors = preserveColors 
+      ? newEvents 
+      : newEvents.map((slot, index) => ({
+          ...slot,
+          event: {
+            ...slot.event,
+            color: pastelColors[index % pastelColors.length]
+          }
+        }));
 
     setHistory(prev => ({
       past: [...prev.past, timeSlots],
@@ -737,6 +739,30 @@ const CircleSchedule = () => {
     return distToMin < distToMax ? currentStart + 0.5 : (nextEnd === 24 ? 23.5 : nextEnd - 0.5);
   };
 
+  // キーボードショートカットの処理を修正
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ctrl+Z: 元に戻す
+      if (e.ctrlKey && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        if (history.past.length > 0) {
+          undo();
+        }
+      }
+      
+      // Ctrl+Shift+Z または Ctrl+Y: やり直し
+      if ((e.ctrlKey && e.shiftKey && e.key === 'z') || (e.ctrlKey && e.key === 'y')) {
+        e.preventDefault();
+        if (history.future.length > 0) {
+          redo();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [history.past.length, history.future.length]);
+
   // SVGコンテナにマウスイベントを追加
   useEffect(() => {
     if (!isDragging || dragIndex === null) return;
@@ -773,121 +799,6 @@ const CircleSchedule = () => {
     };
   }, [isDragging, dragIndex]);
 
-  // ドラッグ終了時のハンドラー
-  const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-
-    const oldIndex = parseInt(active.id.toString().split('-')[2]);
-    const newIndex = parseInt(over.id.toString().split('-')[2]);
-
-    const items = Array.from(timeSlots);
-    const [reorderedItem] = items.splice(oldIndex, 1);
-    items.splice(newIndex, 0, reorderedItem);
-
-    // 時刻の連続性を保つために開始・終了時刻を更新
-    const newTimeSlots = items.map((slot, index) => {
-      const prevSlot = items[(index - 1 + items.length) % items.length];
-      return {
-        ...slot,
-        start: index === 0 ? items[items.length - 1].end : prevSlot.end,
-        end: slot.end
-      };
-    });
-
-    updateEvents(newTimeSlots);
-  };
-
-  // SortableItemコンポーネントを作成
-  const SortableItem = ({ slot, index }: { slot: TimeSlot; index: number }) => {
-    const {
-      attributes,
-      listeners,
-      setNodeRef,
-      transform,
-      transition
-    } = useSortable({ id: `schedule-item-${index}` });
-
-    const style = {
-      transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
-      transition
-    };
-
-    return (
-      <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
-        <div className="relative">
-          {/* イベント名の入力欄 */}
-          <div 
-            className="rounded-lg border p-4 bg-white hover:bg-gray-50 transition-colors"
-            style={{ 
-              borderLeftColor: slot.event.color, 
-              borderLeftWidth: '4px',
-              backgroundColor: `${slot.event.color}10`
-            }}
-          >
-            <div className="flex gap-2">
-              <input
-                id={`event-input-${index}`}
-                type="text"
-                value={slot.event.name}
-                onChange={(e) => handleEventNameChange(index, e.target.value)}
-                className="flex-1 p-2 border rounded-md bg-white"
-                placeholder="イベント名"
-              />
-              <button
-                onClick={() => handleDeleteEvent(index)}
-                className="p-2 text-gray-400 hover:text-red-500 rounded-full hover:bg-red-50 transition-colors bg-white"
-                title="削除"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                </svg>
-              </button>
-            </div>
-          </div>
-
-          {/* 時刻表示と追加ボタン */}
-          <div className="absolute -bottom-6 left-1/2 transform -translate-x-1/2 z-10 flex items-center gap-2">
-            <select
-              value={slot.end}
-              onChange={(e) => handleTimeChange(index, Number(e.target.value))}
-              className="bg-white px-3 py-1.5 rounded-full shadow-sm border text-sm cursor-pointer hover:border-blue-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
-            >
-              {timeOptions.map(option => (
-                <option key={option.value} value={option.value}>
-                  {formatTime(option.value)}
-                </option>
-              ))}
-            </select>
-            {/* イベントが1つの場合、または次のイベントの時間が30分より長い場合に＋ボタンを表示 */}
-            {(timeSlots.length === 1 || getTimeDifference(
-              timeSlots[(index + 1) % timeSlots.length].start,
-              timeSlots[(index + 1) % timeSlots.length].end
-            ) > 0.5) && (
-              <button
-                onClick={() => handleAddEventBetween(index)}
-                className="w-6 h-6 flex items-center justify-center rounded-full bg-white border shadow-sm text-gray-400 hover:text-blue-500 hover:border-blue-400 transition-colors"
-                title="この時間に予定を追加"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  // スクロールエリアの部分を修正
-  const sensors = useSensors(
-    useSensor(PointerSensor),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
-  );
-
   return (
     <div className="fixed inset-0 flex flex-col md:flex-row">
       {/* 左側：円形スケジュール */}
@@ -906,72 +817,93 @@ const CircleSchedule = () => {
               preserveAspectRatio="xMidYMid meet"
             >
               {/* イベントの円弧と境界線を描画 */}
-              {/* 背景の円弧を先に描画 */}
               <g>
+                {/* 最背面：背景の円弧 */}
                 {timeSlots.length > 0 && timeSlots.map((slot, index) => (
-                  <path
-                    key={`arc-${index}`}
-                    d={calculateArc(slot, radius)}
-                    fill={slot.event.color}
-                    className="cursor-pointer hover:opacity-80 transition-opacity"
-                    onClick={() => focusEventInput(slot.start)}
-                  />
+                  <g key={`arc-${index}`}>
+                    {/* 影のための同じパスを下に配置 */}
+                    <path
+                      d={calculateArc(slot, radius)}
+                      fill="rgba(0,0,0,0.2)"
+                      className={`opacity-0 transform translate-x-1 translate-y-1 blur-sm transition-opacity ${
+                        focusedIndex === index ? 'opacity-100' : 'group-hover:opacity-100'
+                      }`}
+                    />
+                    {/* メインの円弧 */}
+                    <path
+                      d={calculateArc(slot, radius)}
+                      fill={slot.event.color}
+                      stroke="#666"
+                      strokeWidth="2"
+                      strokeOpacity="0"
+                      className={`cursor-pointer group hover:stroke-opacity-100 ${
+                        focusedIndex === index ? 'stroke-opacity-100 filter brightness-95' : ''
+                      }`}
+                      onClick={() => focusEventInput(slot.start)}
+                    />
+                  </g>
                 ))}
-              </g>
 
-              {/* その上にテキストとボーダー、＋ボタンを描画 */}
-              <g>
+                {/* 中間層：ドラッグ可能な境界線とボタン */}
                 {timeSlots.length > 0 && timeSlots.map((slot, index) => (
-                  <g key={`controls-${index}`}>
-                    {/* ドラッグ可能な境界線 */}
-                    <g
-                      className="cursor-move group"
-                      onMouseDown={(e) => {
-                        setIsDragging(true);
-                        setDragIndex(index);
-                        e.stopPropagation();
-                      }}
-                    >
-                      {/* より大きな透明なヒットエリア（円弧状） */}
-                      <path
-                        d={`M ${getBoundaryPosition(slot.end, radius * 0).x} ${getBoundaryPosition(slot.end, radius * 0).y}
-                            L ${getBoundaryPosition(slot.end, radius * 1.1).x} ${getBoundaryPosition(slot.end, radius * 1.1).y}`}
-                        stroke="transparent"
-                        strokeWidth="10"
-                        className="cursor-move hover:stroke-blue-50/50"
-                      />
-                      {/* イベント間の＋ボタン（ホバー時のみ表示） */}
-                      {(timeSlots.length === 1 || getTimeDifference(
-                        timeSlots[(index + 1) % timeSlots.length].start,
-                        timeSlots[(index + 1) % timeSlots.length].end
-                      ) > 0.5) && (
-                        <g
-                          onClick={() => handleAddEventBetween(index)}
-                          className="cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
-                          transform={`translate(${getBoundaryPosition(slot.end, radius * 1).x},${getBoundaryPosition(slot.end, radius * 1).y})`}
-                        >
-                          <circle
-                            r="10"
-                            fill="white"
-                            stroke="#666"
-                            strokeWidth="1"
-                            className="hover:stroke-blue-500"
-                          />
-                          <path
-                            d="M -4 0 H 4 M 0 -4 V 4"
-                            stroke="currentColor"
-                            strokeWidth="1.5"
-                            className="text-gray-400 hover:text-blue-500"
-                          />
-                        </g>
-                      )}
-                    </g>
-                    {/* イベント名のテキスト */}
+                  <g key={`controls-${index}`} className="group">
+                    {/* 3つ以上のイベントがある場合のみドラッグ可能な境界線を表示 */}
+                    {timeSlots.length >= 3 && (
+                      <g
+                        className="cursor-move group"
+                        onMouseDown={(e) => {
+                          setIsDragging(true);
+                          setDragIndex(index);
+                          e.stopPropagation();
+                        }}
+                      >
+                        {/* より大きな透明なヒットエリア（円弧状） */}
+                        <path
+                          d={`M ${getBoundaryPosition(slot.end, radius * 0).x} ${getBoundaryPosition(slot.end, radius * 0).y}
+                              L ${getBoundaryPosition(slot.end, radius * 1.1).x} ${getBoundaryPosition(slot.end, radius * 1.1).y}`}
+                          stroke="transparent"
+                          strokeWidth="20"
+                          className="cursor-move hover:stroke-blue-50/50"
+                        />
+                      </g>
+                    )}
+                    {/* イベント間の＋ボタン */}
+                    {(timeSlots.length === 1 || getTimeDifference(
+                      timeSlots[(index + 1) % timeSlots.length].start,
+                      timeSlots[(index + 1) % timeSlots.length].end
+                    ) > 0.5) && (
+                      <g
+                        onClick={() => handleAddEventBetween(index)}
+                        className="cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
+                        transform={`translate(${getBoundaryPosition(slot.end, radius * 1).x},${getBoundaryPosition(slot.end, radius * 1).y})`}
+                      >
+                        <circle
+                          r="10"
+                          fill="white"
+                          stroke="#666"
+                          strokeWidth="1"
+                          className="hover:stroke-blue-500"
+                        />
+                        <path
+                          d="M -4 0 H 4 M 0 -4 V 4"
+                          stroke="currentColor"
+                          strokeWidth="1.5"
+                          className="text-gray-400 hover:text-blue-500"
+                        />
+                      </g>
+                    )}
+                  </g>
+                ))}
+
+                {/* 最前面：テキスト */}
+                {timeSlots.length > 0 && timeSlots.map((slot, index) => (
+                  <g key={`text-${index}`}>
+                    {/* 下線を削除 */}
                     <text
                       x={center + getTextPosition(slot, index).x}
                       y={center + getTextPosition(slot, index).y + 5}
                       textAnchor="middle"
-                      className={`${textSize} font-bold select-none`}
+                      className={`${textSize} font-bold select-none pointer-events-none`}
                       fill="#333"
                       style={{
                         filter: 'drop-shadow(0px 1px 1px rgba(0,0,0,0.1))',
@@ -986,34 +918,34 @@ const CircleSchedule = () => {
                     </text>
                   </g>
                 ))}
+
+                {/* 時刻の目盛りを描画（これは常に表示） */}
+                {Array.from({ length: 24 }, (_, i) => {
+                  const hour = (i + 6) % 24;
+                  const pos = calculatePosition(hour, radius);
+                  return (
+                    <g key={`time-${hour}`}>
+                      <line
+                        x1={center + pos.x * 0.95}
+                        y1={center + pos.y * 0.95}
+                        x2={center + pos.x}
+                        y2={center + pos.y}
+                        stroke="#666"
+                        strokeWidth="1"
+                      />
+                      <text
+                        x={center + pos.x * 1.15}
+                        y={center + pos.y * 1.15}
+                        textAnchor="middle"
+                        className={`${textSize} font-semibold select-none`}
+                        fill="#444"
+                      >
+                        {`${hour}`}
+                      </text>
+                    </g>
+                  );
+                })}
               </g>
-              
-              {/* 時刻の目盛りを描画（これは常に表示） */}
-              {Array.from({ length: 24 }, (_, i) => {
-                const hour = (i + 6) % 24;
-                const pos = calculatePosition(hour, radius);
-                return (
-                  <g key={`time-${hour}`}>
-                    <line
-                      x1={center + pos.x * 0.95}
-                      y1={center + pos.y * 0.95}
-                      x2={center + pos.x}
-                      y2={center + pos.y}
-                      stroke="#666"
-                      strokeWidth="1"
-                    />
-                    <text
-                      x={center + pos.x * 1.15}
-                      y={center + pos.y * 1.15}
-                      textAnchor="middle"
-                      className={`${textSize} font-semibold select-none`}
-                      fill="#444"
-                    >
-                      {`${hour}`}
-                    </text>
-                  </g>
-                );
-              })}
             </svg>
           </div>
         </div>
@@ -1132,26 +1064,80 @@ const CircleSchedule = () => {
 
           {/* スクロールエリア */}
           <div className="flex-1 overflow-y-auto p-4">
-            <DndContext 
-              sensors={sensors}
-              collisionDetection={closestCenter}
-              onDragEnd={handleDragEnd}
-            >
-              <SortableContext 
-                items={timeSlots.map((_, index) => `schedule-item-${index}`)}
-                strategy={verticalListSortingStrategy}
-              >
-                <div className="space-y-2">
-                  {timeSlots.map((slot, index) => (
-                    <SortableItem 
-                      key={`schedule-item-${index}`}
-                      slot={slot}
-                      index={index}
-                    />
-                  ))}
+            <div className="space-y-2">
+              {timeSlots.map((slot, index) => (
+                <div key={`schedule-item-${index}`} className="relative">
+                  {/* イベント名の入力欄 */}
+                  <div 
+                    className="rounded-lg border p-4 bg-white hover:bg-gray-50 transition-colors"
+                    style={{ 
+                      borderLeftColor: slot.event.color, 
+                      borderLeftWidth: '4px',
+                      backgroundColor: `${slot.event.color}10`
+                    }}
+                  >
+                    <div className="flex gap-2">
+                      <input
+                        id={`event-input-${index}`}
+                        type="text"
+                        value={slot.event.name}
+                        onChange={(e) => handleEventNameChange(index, e.target.value)}
+                        onFocus={() => setFocusedIndex(index)}
+                        onBlur={() => setFocusedIndex(null)}
+                        className="flex-1 p-2 border rounded-md bg-white"
+                        placeholder="イベント名"
+                        autoComplete="off"
+                      />
+                      {/* イベントが2つ以上ある場合のみ削除ボタンを表示 */}
+                      {timeSlots.length > 1 && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteEvent(index);
+                          }}
+                          className="p-2 text-gray-400 hover:text-red-500 rounded-full hover:bg-red-50 transition-colors bg-white"
+                          title="削除"
+                        >
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* 時刻表示と追加ボタン */}
+                  <div className="absolute -bottom-6 left-1/2 transform -translate-x-1/2 z-10 flex items-center gap-2">
+                    <select
+                      value={slot.end}
+                      onChange={(e) => handleTimeChange(index, Number(e.target.value))}
+                      className="bg-white px-3 py-1.5 rounded-full shadow-sm border text-sm cursor-pointer hover:border-blue-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                    >
+                      {timeOptions.map(option => (
+                        <option key={option.value} value={option.value}>
+                          {formatTime(option.value)}
+                        </option>
+                      ))}
+                    </select>
+                    {/* イベントが1つの場合、または次のイベントの時間が30分より長い場合に＋ボタンを表示 */}
+                    {(timeSlots.length === 1 || getTimeDifference(
+                      timeSlots[(index + 1) % timeSlots.length].start,
+                      timeSlots[(index + 1) % timeSlots.length].end
+                    ) > 0.5) && (
+                      <button
+                        onClick={() => handleAddEventBetween(index)}
+                        className="w-6 h-6 flex items-center justify-center rounded-full bg-white border shadow-sm text-gray-400 hover:text-blue-500 hover:border-blue-400 transition-colors"
+                        title="この時間に予定を追加"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
                 </div>
-              </SortableContext>
-            </DndContext>
+              ))}
+            </div>
           </div>
         </div>
       </div>
